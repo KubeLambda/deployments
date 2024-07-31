@@ -68,7 +68,7 @@ services:
 
   webhook-adapter:
     build:
-      context: ./serverless-service-webhook-adapter/
+      context: ../kl-webhook-adapter
       dockerfile: Dockerfile
     container_name: webhook-adapter
     depends_on:

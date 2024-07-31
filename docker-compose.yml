@@ -49,7 +49,7 @@ services:
   #       condition: service_started
   webhook-adapter:
     build:
-      context: ./kl-webhook-adapter
+      context: ../kl-webhook-adapter
       dockerfile: Dockerfile
     # container_name: webhook-adapter
     depends_on:
