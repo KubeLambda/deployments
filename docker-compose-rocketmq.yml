@@ -1,0 +1,99 @@
+---
+services:
+  namesrv:
+    container_name: rocketmq-namesrv
+    image: apache/rocketmq:latest
+    environment:
+      JAVA_OPT_EXT: -server -Xms256m -Xmx256m -Xmn256m
+      # NAMESRV_ADDR: 127.0.0.1:9876
+      LOG_LEVEL: ERROR
+    # volumes:
+    #   - ${DOCKER_VOLUME_DIRECTORY:-./volumes}/logs:/home/rocketmq/logs
+    ports:
+      - "9876:9876"
+    command: >
+      sh ./mqnamesrv
+
+  broker:
+    container_name: rocketmq-broker
+    image: apache/rocketmq:latest
+    depends_on:
+      - namesrv
+    environment:
+      JAVA_OPT_EXT: "-Duser.home=/home/rocketmq -server -Xms512m -Xmx512m -Xmn256m"
+      LOG_LEVEL: ERROR
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-./brokerconf}/broker.conf:/etc/rocketmq/broker.conf
+    #   - ${DOCKER_VOLUME_DIRECTORY:-./volumes}/logs:/home/rocketmq/logs
+    #   - ${DOCKER_VOLUME_DIRECTORY:-./volumes}/store:/home/rocketmq/store
+    ports:
+      # Dashboard pass through
+      - "8080:8080"
+      - "10909:10909"
+      - "10911:10911"
+      - "10912:10912"
+    command: ["sh", "mqbroker", "-c", "/etc/rocketmq/broker.conf"]
+    healthcheck:
+      test: ["CMD-SHELL", "exec 6<>/dev/tcp/127.0.0.0/10911"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  create-topics:
+    image: apache/rocketmq:latest
+    container_name: create_topics
+    depends_on:
+      broker:
+        condition: service_healthy
+    # create topics and indicate successful creation
+    # by opening port 11111
+    command: >
+      sh -c "
+      ./mqadmin updateTopic -n namesrv:9876 -b broker:10911 -t requestTopic &&
+      ./mqadmin updateTopic -n namesrv:9876 -b broker:10911 -t responseTopic 
+      "
+
+  dashboard:
+    container_name: rocketmq-dashboard
+    image: apacherocketmq/rocketmq-dashboard:latest
+    depends_on:
+      broker:
+        condition: service_healthy
+    environment:
+      # user.home set is required for FILE appender
+      # used by logback configuration
+      # https://github.com/apache/rocketmq-dashboard/blob/2fb0fce0b16fe04ff7ec0181d4127267e9c9af31/src/main/resources/logback.xml#L31
+      JAVA_OPTS: -Drocketmq.namesrv.addr=namesrv:9876 -Duser.home=/tmp -Dspring.profiles.active=STDOUT
+      LOG_LEVEL: ERROR
+
+  webhook-adapter:
+    build:
+      context: ./serverless-service-webhook-adapter/
+      dockerfile: Dockerfile
+    container_name: webhook-adapter
+    depends_on:
+      namesrv:
+        condition: service_started
+      create-topics:
+        condition: service_completed_successfully
+    command: >
+      sh -c "/app/webhook-adapter run --deployment=production"
+    environment:
+      - WEBHOOK_ADAPTER_CREDENTIALS_KEY=
+      - WEBHOOK_ADAPTER_CREDENTIALS_SECRET=
+      - WEBHOOK_ADAPTER_SERVER_ADDR=0.0.0.0
+      - WEBHOOK_ADAPTER_SERVER_PORT=3001
+      - WEBHOOK_ADAPTER_BROKER_ADDR=namesrv
+      - WEBHOOK_ADAPTER_BROKER_PORT=9876
+
+  # example-lambda:
+  #   build:
+  #     context: ./example_lambda/example_lambda/
+  #     dockerfile: Dockerfile
+  #   container_name: example_lambda
+  #   network_mode: "host"
+  #   depends_on:
+  #     # namesrv:
+  #     #   condition: service_started
+  #     create-topics:
+  #       condition: service_completed_successfully
