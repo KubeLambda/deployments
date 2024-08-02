@@ -6,6 +6,24 @@ There are few options for deploy or run KubeLambda components for testing of usa
 - (WIP) Kubernetes manifests. Simplest way to run everything in Kubernetes. 
 - (TBD) Helm chart. Convenient way to deploy to Kubernetes.
 
+## Local run for testing with docker-compose
+
+Notice I've commented example lambda in compose file. This is because I used example committed within Function repository instead the one in example-lambda-* repos.
+I've end up usually doing it this way (using [python _Function_](https://github.com/KubeLambda/example-lambda-py) as example):
+
+- Run docker-compose with `docker-compose up --build --remove-orphans` to spin-up _Adapter_ and _Broker_
+- Run following command to build and run lambda function from [example_lambda folder](https://github.com/KubeLambda/kl-function-py/tree/main/example/example_lambda) in separate terminal:
+
+```sh
+docker build --no-cache -t function-python . ; docker run --network host --rm -it $(docker build -q example/example_lambda/)
+```
+
+and test requests (for [WebHookAdapter](https://github.com/KubeLambda/kl-webhook-adapter)) using following curl:
+
+```sh
+curl --data '{"name":"bob"}' --header 'Content-Type: application/json' http://0.0.0.0:3001/api/adapte
+```
+
 ## Notes on RocketMQ
 
 I've included configs I tried to use with RocketMQ as _Broker_ together with docker-compose file I used. I abandoned it's usage, but this information may be useful to someone else. 
